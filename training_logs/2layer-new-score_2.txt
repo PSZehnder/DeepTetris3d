@@ -1,0 +1,1 @@
+episode 1 of 100000 complete,  explore val = 1.0, episode reward = 78.6, ave reward = 78.6, sim time = 1.549, fit time = 10.016, episode_time = 11.565
