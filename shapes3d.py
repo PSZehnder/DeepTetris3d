@@ -38,7 +38,7 @@ b = np.array([[[1, 1],
 
 
 # standardize the matricies by embedding them in a matrix of embedding_shape
-def embed(matrix, embedding_shape=(2, 2, 4)):
+def embed(matrix, embedding_shape=(4, 4, 4)):
     embedding_matrix = np.zeros(shape=embedding_shape)
     embedding_matrix[0:matrix.shape[0], 0:matrix.shape[1], 0:matrix.shape[2]] = matrix
     return embedding_matrix
@@ -64,7 +64,7 @@ def generate_random_block(bounding_shape, density=0.25):
 
 class Tetromino:
 
-    def __init__(self, matrix, location, embedding=(2, 2, 4)):
+    def __init__(self, matrix, location, embedding=(4, 4, 4)):
         self.location = np.array(location)
         self.matrix = embed(matrix, embedding_shape=embedding)
         self.color = np.random.randint(1, len(color_vec) - 1)

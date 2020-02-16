@@ -9,7 +9,6 @@ import tetris3d as sw
 from matplotlib.animation import FuncAnimation, FFMpegWriter, writers
 import os
 import pickle
-from keras.models import model_from_json
 
 '''
     Tools for rendering and animating tetris-like numpy matrices
@@ -161,7 +160,7 @@ def moving_average(x, D):
     return np.array(y)
 
 
-def plot_reward_history(logname, **kwargs):
+def get_reward_history(logname, **kwargs):
     start = 1
     window_length = 5
     if 'window_length' in kwargs:
@@ -173,6 +172,18 @@ def plot_reward_history(logname, **kwargs):
     data = np.loadtxt(logname)
     ave = moving_average(data, window_length)
 
+    return data, ave
+
+def plot_reward_history(logname, **kwargs):
+
+    start = 1
+    window_length = 5
+    if 'window_length' in kwargs:
+        window_length = kwargs['window_length']
+    if 'start' in kwargs:
+        start = kwargs['start']
+
+    data, ave = get_reward_history(logname, **kwargs)
     # create figure
     fig = plt.figure(figsize=(12, 8))
     ax1 = fig.add_subplot(2, 1, 1)
@@ -187,26 +198,35 @@ def plot_reward_history(logname, **kwargs):
     ax2.plot(ave, linewidth=3)
     ax2.set_xlabel('episode', labelpad=8, fontsize=13)
     ax2.set_ylabel('ave total reward', fontsize=13)
-    plt.show()
-
 
 def render_from_model(model, fig, ax, tetris_instance, save_path=None):
 
-    def state_normalizer(state):
-        state = np.array(state)[np.newaxis, :]
-        return state
+    def renormalize_vec(tensor, idx):
+        tensor = tensor.squeeze(0)
+        tensor[idx] = 0
+        sum = torch.sum(tensor)
+        return tensor / sum
 
     frames_queue1 = []
     frame_count = 0
     while not tetris_instance.done:
         frame_count += 1
-        print(frame_count)
-        state = state_normalizer(tetris_instance.stripped())
-        action = tetris_instance.action_space[np.argmax(model.predict(state)[0])]
-        tetris_instance(action)
-        frames_queue1.append(tetris_instance.knitted_board())
+        state = tetris_instance.board_with_piece
+        state = torch.from_numpy(state).float().unsqueeze(0).unsqueeze(0).to(torch.device('cuda'))
+        output = model(state)
+        print(tetris_instance.compute_packing_efficiency())
+        invalid_actions = []
+        for i in range(len(tetris_instance.action_space)):  # todo paralellize
+            invalid_actions.append(not tetris_instance.is_valid_action(tetris_instance.action_space[i]))
+        invalid_actions = np.array(invalid_actions)
+        output = renormalize_vec(output, invalid_actions)
 
-    animation = animate_from_queue(frames_queue1, fig, ax, framedelay=10)
+        action = tetris_instance.action_space[torch.argmax(output)]
+        tetris_instance(action)
+        if frame_count % 3 == 0:
+            frames_queue1.append(tetris_instance.knitted_board())
+
+    animation = animate_from_queue(frames_queue1, fig, ax, framedelay=1)
     if save_path:
         mywriter = writers['ffmpeg'](fps=60)
         animation.save(save_path, writer=mywriter)
@@ -214,28 +234,58 @@ def render_from_model(model, fig, ax, tetris_instance, save_path=None):
 
 
 if __name__ == "__main__":
+    import matplotlib
+    matplotlib.use('TkAgg')
+    # tetris settings
+    clear_reward = 1000
+    pieces_reward = 0.5
+    packing_reward = 0.05
+    reachable_penalty = 0.001
+    variance_penalty = 0.001
+    translation_reward = 0.0001
+    rotation_reward = 0.00009
+    game_over_penalty = 50
+    game_len_reward = 0.0001
 
-    save_name = '2-layer-batchlearn_Fixed'
+    rewards = {
+        'clear_reward': clear_reward,
+        'pieces_reward': pieces_reward,
+        'packing_reward': packing_reward,
+        'reachable_penalty': reachable_penalty,
+        'variance_penalty': variance_penalty,
+        'game_over_penalty': game_over_penalty,
+        'translation_reward': translation_reward,
+        'rotation_reward': rotation_reward,
+        'game_len_reward': game_len_reward
+    }
+
+    import torch
+    from model import DenseNet
+
+    save_name = 'oleg_tuned'
     exit_window = 100
 
     # an example of the animation renderer
     fig = plt.figure()
     ax = fig.gca(projection='3d')
 
-    axis_extents = (5, 5, 20)
-    ax.set_xlim3d(0, 5)
-    ax.set_ylim3d(0, 5)
-    ax.set_zlim3d(0, 20)
+    axis_extents = (7, 7, 15)
+    ax.set_xlim3d(0, 7)
+    ax.set_ylim3d(0, 7)
+    ax.set_zlim3d(0, 15)
 
-    game = sw.GameState(board_shape=axis_extents, rewards=[0] * 6)
+    N=128
 
-    with open('models/' + save_name + '.json', 'r') as mod:
-        model = model_from_json(mod.read())
+    game = sw.GameState(board_shape=axis_extents, rewards=rewards)
 
-    weights = pickle.load(open("saved_model_weights/" + save_name + ".pkl", 'rb'))
+    model = DenseNet(11, in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
+                     concat_channels=N, pool=7)
 
-    model.set_weights(weights[len(weights) - 1])
+    model.to(torch.device('cuda'))
 
-    render_from_model(model, fig, ax, game, "images/2lbl_F.mp4")
+    model.load_state_dict(torch.load('saved_model_weights/oleg_lives3/oleg_lives31000.pth'))
+    model.eval()
 
+    animation = render_from_model(model, fig, ax, game)
+    plt.show()
 
