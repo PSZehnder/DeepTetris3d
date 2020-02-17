@@ -9,6 +9,7 @@ import tetris3d as sw
 from matplotlib.animation import FuncAnimation, FFMpegWriter, writers
 import os
 import pickle
+import torch
 
 '''
     Tools for rendering and animating tetris-like numpy matrices
@@ -199,7 +200,17 @@ def plot_reward_history(logname, **kwargs):
     ax2.set_xlabel('episode', labelpad=8, fontsize=13)
     ax2.set_ylabel('ave total reward', fontsize=13)
 
-def render_from_model(model, fig, ax, tetris_instance, save_path=None):
+CPU = torch.device('cpu')
+
+
+def make_torch(array, device=CPU):
+    tens = torch.from_numpy(array.copy())
+    tens = tens.float()
+    tens = tens.unsqueeze(0)
+    tens = tens.unsqueeze(0)
+    return tens.to(device)
+
+def render_from_model(model, fig, ax, tetris_instance, save_path=None, device=CPU):
 
     def renormalize_vec(tensor, idx):
         tensor = tensor.squeeze(0)
@@ -211,10 +222,12 @@ def render_from_model(model, fig, ax, tetris_instance, save_path=None):
     frame_count = 0
     while not tetris_instance.done:
         frame_count += 1
-        state = tetris_instance.board_with_piece
-        state = torch.from_numpy(state).float().unsqueeze(0).unsqueeze(0).to(torch.device('cuda'))
-        output = model(state)
-        print(tetris_instance.compute_packing_efficiency())
+
+        state = make_torch(tetris_instance.board, device)
+        piece = make_torch(tetris_instance.current.matrix, device)
+        location = torch.from_numpy(tetris_instance.current.location).float().unsqueeze(0).to(device)
+
+        output = model(state, piece, location)
         invalid_actions = []
         for i in range(len(tetris_instance.action_space)):  # todo paralellize
             invalid_actions.append(not tetris_instance.is_valid_action(tetris_instance.action_space[i]))
@@ -226,10 +239,9 @@ def render_from_model(model, fig, ax, tetris_instance, save_path=None):
         if frame_count % 3 == 0:
             frames_queue1.append(tetris_instance.knitted_board())
 
-    animation = animate_from_queue(frames_queue1, fig, ax, framedelay=1)
+    animation = animate_from_queue(frames_queue1, fig, ax, framedelay=20)
     if save_path:
-        mywriter = writers['ffmpeg'](fps=60)
-        animation.save(save_path, writer=mywriter)
+        animation.save(save_path, writer='imagemagick', fps=30)
     return animation
 
 
@@ -281,11 +293,11 @@ if __name__ == "__main__":
     model = DenseNet(11, in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
                      concat_channels=N, pool=7)
 
-    model.to(torch.device('cuda'))
+    model.to(torch.device('cpu'))
 
-    model.load_state_dict(torch.load('saved_model_weights/oleg_lives3/oleg_lives31000.pth'))
+    model.load_state_dict(torch.load('saved_model_weights/oleg_lives3/oleg_lives31500.pth'))
     model.eval()
 
-    animation = render_from_model(model, fig, ax, game)
-    plt.show()
+    render_from_model(model, fig, ax, game, save_path='images/217-oleg1500.gif')
+
 

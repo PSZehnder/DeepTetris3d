@@ -103,8 +103,8 @@ class GameState:
         numer = 0
         for x in range(self.board.shape[0]):
             for y in range(self.board.shape[1]):
-                numer += int(self.board[x, y, 0])
-        return numer / denom
+                numer += int(self.board[x, y, self.board.shape[2] - 1])
+        return 1 - (numer / denom)
 
     def get_new_piece(self):
         shape = np.random.choice(list(s3d.shapelib.keys()))

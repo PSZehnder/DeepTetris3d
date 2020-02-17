@@ -7,19 +7,19 @@ from render import plot_reward_history
 import pickle
 
 dir = os.getcwd()
-save_name = 'oleg_lives3'
+save_name = '218-oleg'
 
 # resume from 0.012
 
 # tetris settings
 clear_reward = 100 #100
 pieces_reward = 0.05 #0.05 #0.05 # 0.05 -> 1.1 to 2
-packing_reward = 1 #0.004 #0.004 -> 1.5 to 2.4
+packing_reward = 0.9 #0.004 #0.004 -> 1.5 to 2.4
 variance_penalty = 0.0025 #0.0005 #0.0005
 game_over_penalty = 25
 game_len_reward = 0.05
 height_penalty = 0.0025
-empty_column_penalty = 0.01
+empty_column_penalty = 0.015
 
 rewards = {
             'clear_reward'      : clear_reward,
@@ -41,18 +41,18 @@ tetris_instance = GameState(board_shape=board_shape, rewards=rewards)
 
 # Q learn settings
 num_episodes = 25000
-explore_decay = 0.998
+explore_decay = 0.99
 explore_val = 1
 exit_level = 200
 exit_window = 4
-save_weight_freq = 500
-target_refresh = 256
-minibatch_size = 256
-bsize = 256
+save_weight_freq = 100
+target_refresh = 1024
+minibatch_size = 2048
+bsize = 128
 
 # initialize memory
-episode_update = 1
-memory_length = 500
+episode_update = 4
+memory_length = 1024
 
 # load into instance of learner
 learner = TetrisQLearn(tetris_instance, save_name, dir,

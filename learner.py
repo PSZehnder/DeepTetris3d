@@ -44,7 +44,8 @@ class TetrisQLearn:
         self.num_episodes = 500  # number of episodes of simulation to perform
         self.save_weight_freq = 10  # controls how often (in number of episodes) the weights of Q are saved
         self.memory = []
-        self._process_mask = []# memory container
+        self._process_mask = []
+        self.processed_memory = []# memory container
 
         # fitted Q-Learning params
         self.episode_update = 1  # after how many episodes should we update Q?
@@ -175,57 +176,84 @@ class TetrisQLearn:
 
     def memory_replay(self):
         # process transitions using target network
-        q_vals = None
+        q_vals = []
         states = []
         pieces = []
         locats = []
         episode_loss = 0
 
+        total_processed = 0
+
+        tick = time.time()
         for i in range(len(self.memory)):
-            if not self._process_mask[i]:
-                self._process_mask[i] = True
-                episode_data = self.memory[i]
+            episode_data = self.memory[i]
+            if self.processed_memory[i] is None:
+                self.processed_memory[i] = [None] * len(episode_data)
 
-                for j in range(len(episode_data)):
-                    sample = episode_data[j]
+            for j in range(len(episode_data)):
+                # process the sample and put it into the processed_memory
+                sample = episode_data[j]
 
-                    # strip sample for parts
-                    state, piece, locat = sample[0]
-                    next_state, next_piece, next_locat = sample[1]
-                    action = sample[2]
-                    reward = sample[3]
-                    done = sample[4]
+                state, piece, locat = sample[0]
+                next_state, next_piece, next_locat = sample[1]
+                action = sample[2]
+                reward = sample[3]
+                done = sample[4]
 
+                if self.processed_memory[i][j] is None:
                     q = reward
+
+                    # preprocess q using target network
                     if not done:
                         next_state = torch.tensor(next_state).to(self.device)
                         next_piece = torch.tensor(next_piece).to(self.device)
                         next_locat = torch.tensor(next_locat).to(self.device)
 
-                        qs = self.target_network(next_state, next_piece, next_locat)
+                        qs = self.target_network(next_state, next_piece, next_locat) #should be target
                         q += self.gamma * torch.max(qs)
 
-                    # clamp all other models to their current values for this input/output pair
                     state = torch.tensor(state).to(self.device)
                     piece = torch.tensor(piece).to(self.device)
                     locat = torch.tensor(locat).to(self.device)
 
-                    q_update = self.target_network(state, piece, locat).squeeze(0)
+                    q_update = self.target_network(state, piece, locat).squeeze(0) # should be target
                     q_update[action] = q
-                    if q_vals is None:
-                        q_vals = [q_update.detach().cpu().numpy()]
-                    q_vals = q_vals + [q_update.detach().cpu().numpy()]
-                    states.append(state.detach())
-                    pieces.append(piece.float().squeeze(0).detach())
-                    locats.append(locat.float().detach())
+                    processed = q_update.detach().cpu().numpy()
+                    q_vals = q_vals + [processed]
+                    self.processed_memory[i][j] = processed
+                    total_processed += 1
 
-        self.Q.train()
+                    # clear up the vram
+                    state = state.cpu().squeeze(0).numpy()
+                    piece = piece.float().squeeze(0).cpu().numpy()
+                    locat = locat.float().cpu().numpy()
 
-        # convert to tensor of right size
-        s_in = [s for game in states for s in game]
+                else:
+                    q_vals = q_vals + [self.processed_memory[i][j]]
+
+                # its goofy but it will work
+                if state.ndim > 4:
+                    state = state.squeeze(0)
+                assert state.ndim == 4
+
+                if piece.ndim > 4:
+                    piece = piece.squeeze(0)
+                assert piece.ndim == 4
+
+                if locat.ndim > 2:
+                    locat = locat.squeeze(0)
+                assert locat.ndim == 2
+
+                states.append(state)
+                pieces.append(piece)
+                locats.append(locat)
+
+        elapsed_time = time.time() - tick
+        print('process time: %.2f' % elapsed_time)
+        print('total processed: %d (%.2f/s)' % (total_processed, total_processed / elapsed_time))
 
         # take descent step
-        memory = MemoryDset(s_in, pieces, locats, q_vals)
+        memory = MemoryDset(states, pieces, locats, q_vals)
 
         if self.minibatch_size > 0:
             ids = random.sample(range(len(memory)), min(self.minibatch_size, len(memory) - 1))
@@ -242,8 +270,7 @@ class TetrisQLearn:
             self.optimizer.step()
             episode_loss += loss.item()
             s.detach_()
-        print('process time: %.2f' % (time.time() - tick))
-        print(len(dataloader.dataset))
+        print('fit time: %.2f' % (time.time() - tick))
         
         if self.schedule:
             self.scheduler.step(episode_loss)
@@ -252,19 +279,19 @@ class TetrisQLearn:
     def update_target(self):
         self.target_network = self.Q.copy()
         self.target_network.to(self.device)
-        self._process_mask = [False] * len(self._process_mask)  # reset the processed_mask
+        self.processed_memory = [None] * len(self.processed_memory)
 
     def update_memory(self, episode_data):
         # add most recent trial data to memory
         self.memory.append(episode_data)
-        self._process_mask.append(False)
+        self.processed_memory.append(None)
 
         # clip memory if it gets too long
         num_episodes = len(self.memory)
         if num_episodes >= self.memory_length:
             num_delete = num_episodes - self.memory_length
             self.memory[:num_delete] = []
-            self._process_mask[:num_delete] = []
+            self.processed_memory[:num_delete] = []
 
     def make_torch(self, array):
         tens = torch.from_numpy(array.copy())
@@ -431,9 +458,9 @@ class MemoryDset(Dataset):
         out = []
         for lst in self.lists:
             if not isinstance(lst[item], torch.Tensor):
-                t = torch.tensor(lst[item])
+                t = torch.tensor(lst[item]).float()
             else:
-                t = lst[item]
+                t = lst[item].float()
             t = t.to(self.device)
             out.append(t)
         return out
