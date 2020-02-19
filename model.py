@@ -11,11 +11,13 @@ class DenseUnit(nn.Module):
         self.out_channels = conv_channels
 
         self.conv1 = nn.Conv3d(in_channels, conv_channels, kernel_size, padding=(kernel_size // 2))
+        self.relu = nn.Sequential(nn.Dropout(0.5), nn.ReLU())
         self.conv2 = nn.Conv3d(conv_channels, conv_channels, kernel_size, padding=(kernel_size // 2))
         self.relupool = RegularizePool(pool)
 
     def forward(self, input):
         x = self.conv1(input)
+        x = self.relu(x)
         x = self.conv2(x)
         x = self.relupool(x)
         return x
@@ -125,7 +127,7 @@ class DenseNet(nn.Module):
         self.init_conv = nn.Conv3d(in_channels=1, out_channels=in_channels, kernel_size=1)
         self.dblock1 = DenseBlock(in_channels, dense_channels, in_channels, pool=pool, kernel_size=3)
         self.dblock2 = DenseBlock(in_channels, dense_channels, dense_channels, pool=pool, kernel_size=5)
-        #self.dblock3 = DenseBlock(dense_channels, dense_channels, dense_channels, pool=pool, kernel_size=5)
+        self.dblock3 = DenseBlock(dense_channels, dense_channels, dense_channels, pool=pool, kernel_size=5)
         #self.dblock4 = DenseBlock(dense_channels, dense_channels, concat_channels, pool=pool, kernel_size=5)
 
         self.pool1 = RegularizePool(pool)
@@ -149,7 +151,7 @@ class DenseNet(nn.Module):
         x = self.pool1(x)
         x = self.dblock1(x)
         x = self.dblock2(x)
-        #x = self.dblock3(x)
+        x = self.dblock3(x) #only enabled for 218
         #x = self.dblock4(x)
         x = self.pool2(x)
         x = self.final_conv(x)

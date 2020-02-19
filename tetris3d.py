@@ -50,6 +50,7 @@ class GameState:
             self.game_len_reward = 0
             self.height_penalty = 0
             self.empty_column_penalty = 0
+            self.overhang_penalty = 0
 
             for k, v in rewards.items():
                 self.__setattr__(k, v)
@@ -68,11 +69,13 @@ class GameState:
 
         clear_reward = self.clear_reward * n ** 2
         piece_reward = (int(self.total_pieces > self.previous_piece_count) * self.pieces_reward)
-        game_over_penalty = int(done) * (-self.game_over_penalty + self.game_len_reward * self.ticks)
+        game_over_penalty = int(done) * (-self.game_over_penalty)
+        tick_reward =  self.game_len_reward * self.total_pieces ** 1.05
         packing_efficiency = (self.compute_packing_efficiency() * self.packing_reward)
         variance_penalty = (-self.compute_columnar_variance() * self.variance_penalty)
         height_penalty = -self.height() * self.height_penalty
         empty_column_penalty = -self.empty_columns() * self.empty_column_penalty
+        overhang_penalty = -self.count_over_hangs() * self.overhang_penalty
         self.previous_piece_count = self.total_pieces
 
         result_dict = {
@@ -82,7 +85,9 @@ class GameState:
             'packing_efficiency': packing_efficiency,
             'columnar_variance': variance_penalty,
             'empty_column_penalty': empty_column_penalty,
-            'height_penalty': height_penalty
+            'height_penalty': height_penalty,
+            'overhang_penalty': overhang_penalty,
+            'tick_reward': tick_reward,
         }
         if not recalc:
             for k in result_dict.keys():
@@ -130,13 +135,20 @@ class GameState:
         denom = 0
         sum = 0
         for z in range(self.board.shape[2]):
-            if self.board[:, :, z].any():
-                denom += self.board.shape[0] * self.board.shape[1] * z
-                sum += np.sum(self.board[:, :, z]) * z
+            denom += self.board.shape[0] * self.board.shape[1] * z
+            sum += np.sum(self.board[:, :, z]) * z
         if denom != 0:
             return sum / denom
         else:
             return 0
+
+    def count_over_hangs(self):
+        count = 0
+        for x, y, z in product(range(self.board_extents[0]),
+                               range(self.board_extents[1]), range(1, self.board_extents[2])):
+            if self.board[x, y, z] == 0 and self.board[x, y, z - 1] == 1:
+                count += 1
+        return count
 
     # adds the current piece to the board. If inplace, then directly modifies self.board, then returns self.board;
     # Otherwise, makes a copy, then returns the modified copy. by defualt, set to 1

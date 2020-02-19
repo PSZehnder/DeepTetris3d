@@ -295,9 +295,9 @@ if __name__ == "__main__":
 
     model.to(torch.device('cpu'))
 
-    model.load_state_dict(torch.load('saved_model_weights/oleg_lives3/oleg_lives31500.pth'))
+    model.load_state_dict(torch.load('saved_model_weights/219-oleg-continued/219-oleg-continued300.pth'))
     model.eval()
 
-    render_from_model(model, fig, ax, game, save_path='images/217-oleg1500.gif')
+    render_from_model(model, fig, ax, game, save_path='images/219-oleg-500.gif')
 
 

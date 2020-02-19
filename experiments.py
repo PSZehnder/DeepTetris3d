@@ -7,19 +7,20 @@ from render import plot_reward_history
 import pickle
 
 dir = os.getcwd()
-save_name = '218-oleg'
+save_name = '219-oleg-continued'
 
 # resume from 0.012
 
 # tetris settings
 clear_reward = 100 #100
-pieces_reward = 0.05 #0.05 #0.05 # 0.05 -> 1.1 to 2
-packing_reward = 0.9 #0.004 #0.004 -> 1.5 to 2.4
-variance_penalty = 0.0025 #0.0005 #0.0005
-game_over_penalty = 25
-game_len_reward = 0.05
-height_penalty = 0.0025
-empty_column_penalty = 0.015
+pieces_reward = 0.003 #0.05 #0.05 # 0.05 -> 1.1 to 2
+packing_reward = 0.035 #0.004 #0.004 -> 1.5 to 2.4
+variance_penalty = 0.00075 #0.0005 #0.0005
+game_over_penalty = 7.5
+game_len_reward = 0.0009
+height_penalty = 0.00065
+empty_column_penalty = 0.0045
+overhang_penalty = 0.00004
 
 rewards = {
             'clear_reward'      : clear_reward,
@@ -29,10 +30,11 @@ rewards = {
             'game_over_penalty' : game_over_penalty,
             'game_len_reward'   : game_len_reward,
             'empty_column_penalty' : empty_column_penalty,
-            'height_penalty' : height_penalty
+            'height_penalty' : height_penalty,
+            'overhang_penalty': overhang_penalty
            }
 
-with open(os.path.join('reward_logs', save_name + 'reward_dict.pkl'), 'wb') as pick_file:
+with open(os.path.join('reward_logs', save_name + '-reward_dict.pkl'), 'wb') as pick_file:
     pickle.dump(rewards, pick_file)
 
 board_shape = [7, 7, 15]
@@ -41,18 +43,18 @@ tetris_instance = GameState(board_shape=board_shape, rewards=rewards)
 
 # Q learn settings
 num_episodes = 25000
-explore_decay = 0.99
-explore_val = 1
+explore_decay = 0.997
+explore_val = 0.90
 exit_level = 200
 exit_window = 4
 save_weight_freq = 100
-target_refresh = 1024
-minibatch_size = 2048
-bsize = 128
+target_refresh = 256
+minibatch_size = 1024
+bsize = 64
 
 # initialize memory
 episode_update = 4
-memory_length = 1024
+memory_length = 256
 
 # load into instance of learner
 learner = TetrisQLearn(tetris_instance, save_name, dir,
@@ -73,7 +75,8 @@ learner = TetrisQLearn(tetris_instance, save_name, dir,
 # initialize Q function
 N = 128
 alpha = 10**(-5)
-learner.initialize_Q(alpha, in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
+learner.initialize_Q(alpha=alpha, model_path='saved_model_weights/219-oleg/219-oleg200.pth',
+                     in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
                      concat_channels=N, pool=7)
 
 learner.run()

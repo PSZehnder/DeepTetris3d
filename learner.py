@@ -137,7 +137,7 @@ class TetrisQLearn:
             dict_writer.writerow(reward_dict)
 
     # Q Learning Stuff
-    def initialize_Q(self, alpha=None, **kwargs):
+    def initialize_Q(self, model_path=None, alpha=None, **kwargs):
         lr = 10 ** (-2)
         if alpha:
             lr = alpha
@@ -146,6 +146,9 @@ class TetrisQLearn:
         output_dim = self.num_actions
 
         self.model = DenseNet(output_dim, **kwargs)
+        if model_path is not None:
+            print('loading check point %s' % model_path)
+            self.model.load_state_dict(torch.load(model_path))
         self.Q = self.model
         self.target_network = self.Q.copy()
 
@@ -440,6 +443,96 @@ class TetrisQLearn:
         update = 'q-learning algorithm complete'
         self.update_log(self.logname, update + '\n')
         print(update)
+
+# import asyncio
+#
+# class LongTermMemory:
+#
+#     class _DatumFlag:
+#         # binds to data to mark as processed or unprocessed and also which epoch it belongs to
+#         def __init__(self, data, link):
+#             self.data = data
+#             self.processed = False
+#             self.link = link # link to the processed/unprocessed _DatumFlag
+#
+#         def _link(self, other): #convenience func
+#             self.link = other
+#             other.link = self
+#
+#         def _toggleproc(self):
+#             self.processed = not self.processed
+#
+#         def __eq__(self, other):
+#             try:
+#                 return self.data == other.data
+#             except AttributeError:
+#                 return self.data == other
+#
+#     def __init__(self, parent, model, len):
+#
+#         self.unprocessed = []
+#         self.memory = []
+#         self._working = False
+#         self.model = model
+#         self.parent = parent # the learner
+#         self.len = len
+#
+#     def update_memory(self, episode_data):
+#         # clip memory if it gets too long
+#         num_episodes = len(self.unprocessed)
+#         if num_episodes >= self.len:
+#             num_delete = num_episodes - self.len
+#             to_delete = self.unprocessed[:num_delete]
+#             for data in to_delete: #data is a _datumflag
+#                 if data.processed:
+#                     self.memory.remove(data)
+#                 self.unprocessed.remove(data)
+#
+#         # add most recent trial data to memory
+#         self.unprocessed.append(self._DatumFlag(episode_data))
+#         if not self._working:
+#             self._working = True
+#
+#     async def _process(self, datum):
+#         if not datum.processed:
+#             data = datum.data
+#             state, piece, locat = data[0]
+#             next_state, next_piece, next_locat = data[1]
+#             action = data[2]
+#             reward = data[3]
+#             done = data[4]
+#
+#             q = reward
+#
+#             # preprocess q using target network
+#             if not done:
+#                 next_state = torch.tensor(next_state).to(self.parent.device)
+#                 next_piece = torch.tensor(next_piece).to(self.parent.device)
+#                 next_locat = torch.tensor(next_locat).to(self.parent.device)
+#
+#                 qs = self.parent.target_network(next_state, next_piece, next_locat) #should be target
+#                 q += self.parent.gamma * torch.max(qs)
+#
+#             state = torch.tensor(state).to(self.parent.device)
+#             piece = torch.tensor(piece).to(self.parent.device)
+#             locat = torch.tensor(locat).to(self.parent.device)
+#
+#             q_update = self.parent.target_network(state, piece, locat).squeeze(0) # should be target
+#             q_update[action] = q
+#
+#             processed = q_update.detach().cpu().numpy()
+#             state = state.cpu().squeeze(0).numpy()
+#             piece = piece.float().squeeze(0).cpu().numpy()
+#             locat = locat.float().cpu().numpy()
+#
+#     def __getitem__(self, item):
+#         dflag = self.unprocessed[item]
+#         if not dflag.processed:
+#             dflag = await self._process(dflag)
+#         data = dflag.link.data
+#         return data
+
+
 
 class MemoryDset(Dataset):
 
