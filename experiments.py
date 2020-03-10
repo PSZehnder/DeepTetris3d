@@ -7,20 +7,21 @@ from render import plot_reward_history
 import pickle
 
 dir = os.getcwd()
-save_name = '219-oleg-continued'
+save_name = '220-oleg-packing_eff_only'
 
 # resume from 0.012
 
+### THESE ARE ALL POSITIVE SIGNALS EXCEPT GAME OVER
 # tetris settings
-clear_reward = 100 #100
-pieces_reward = 0.003 #0.05 #0.05 # 0.05 -> 1.1 to 2
-packing_reward = 0.035 #0.004 #0.004 -> 1.5 to 2.4
-variance_penalty = 0.00075 #0.0005 #0.0005
-game_over_penalty = 7.5
-game_len_reward = 0.0009
-height_penalty = 0.00065
-empty_column_penalty = 0.0045
-overhang_penalty = 0.00004
+clear_reward = 1000
+pieces_reward = 0
+packing_reward = 15
+variance_penalty = 0 #0.085
+game_over_penalty = 50
+game_len_reward = 0
+height_penalty = 0 #0.02
+empty_column_penalty = 0 #1.1
+overhang_penalty = 0
 
 rewards = {
             'clear_reward'      : clear_reward,
@@ -37,28 +38,29 @@ rewards = {
 with open(os.path.join('reward_logs', save_name + '-reward_dict.pkl'), 'wb') as pick_file:
     pickle.dump(rewards, pick_file)
 
-board_shape = [7, 7, 15]
+board_shape = [10, 10, 20]
 
 tetris_instance = GameState(board_shape=board_shape, rewards=rewards)
 
 # Q learn settings
 num_episodes = 25000
-explore_decay = 0.997
-explore_val = 0.90
+explore_decay = 0.995
+explore_val = 1
 exit_level = 200
 exit_window = 4
-save_weight_freq = 100
+save_weight_freq = 200
 target_refresh = 256
-minibatch_size = 1024
+minibatch_size = 128
 bsize = 64
+use_target = True
 
 # initialize memory
-episode_update = 4
-memory_length = 256
+episode_update = 2
+memory_length = 128
 
 # load into instance of learner
 learner = TetrisQLearn(tetris_instance, save_name, dir,
-                       gamma=0.9,
+                       gamma=0.95,
                        num_episodes=num_episodes,
                        explore_decay=explore_decay,
                        explore_val=explore_val,
@@ -70,12 +72,14 @@ learner = TetrisQLearn(tetris_instance, save_name, dir,
                        save_weight_freq=save_weight_freq,
                        schedule=True,
                        refresh_target=target_refresh,
-                       minibatch_size=minibatch_size)
+                       minibatch_size=minibatch_size,
+                       render_path='images')
 
 # initialize Q function
+modelpath = None
 N = 128
 alpha = 10**(-5)
-learner.initialize_Q(alpha=alpha, model_path='saved_model_weights/219-oleg/219-oleg200.pth',
+learner.initialize_Q(alpha=alpha, model_path= modelpath,
                      in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
                      concat_channels=N, pool=7)
 

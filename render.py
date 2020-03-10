@@ -10,6 +10,7 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter, writers
 import os
 import pickle
 import torch
+import asyncio
 
 '''
     Tools for rendering and animating tetris-like numpy matrices
@@ -172,8 +173,8 @@ def get_reward_history(logname, **kwargs):
     # load in total episode reward history
     data = np.loadtxt(logname)
     ave = moving_average(data, window_length)
-
-    return data, ave
+    ave[0:5] = ave[6]
+    return data, ave[2:]
 
 def plot_reward_history(logname, **kwargs):
 
@@ -228,22 +229,16 @@ def render_from_model(model, fig, ax, tetris_instance, save_path=None, device=CP
         location = torch.from_numpy(tetris_instance.current.location).float().unsqueeze(0).to(device)
 
         output = model(state, piece, location)
-        invalid_actions = []
-        for i in range(len(tetris_instance.action_space)):  # todo paralellize
-            invalid_actions.append(not tetris_instance.is_valid_action(tetris_instance.action_space[i]))
-        invalid_actions = np.array(invalid_actions)
-        output = renormalize_vec(output, invalid_actions)
 
         action = tetris_instance.action_space[torch.argmax(output)]
         tetris_instance(action)
         if frame_count % 3 == 0:
             frames_queue1.append(tetris_instance.knitted_board())
 
-    animation = animate_from_queue(frames_queue1, fig, ax, framedelay=20)
+    animation = animate_from_queue(frames_queue1, fig, ax, framedelay=30)
     if save_path:
         animation.save(save_path, writer='imagemagick', fps=30)
     return animation
-
 
 if __name__ == "__main__":
     import matplotlib
@@ -290,14 +285,16 @@ if __name__ == "__main__":
 
     game = sw.GameState(board_shape=axis_extents, rewards=rewards)
 
-    model = DenseNet(11, in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
-                     concat_channels=N, pool=7)
+    print(len(game.action_space))
 
-    model.to(torch.device('cpu'))
+    #model = DenseNet(11, in_channels=N, neurons=256, fc_channels=N, dense_channels=N,
+    #                concat_channels=N, pool=7)
 
-    model.load_state_dict(torch.load('saved_model_weights/219-oleg-continued/219-oleg-continued300.pth'))
-    model.eval()
+    #model.to(torch.device('cpu'))
 
-    render_from_model(model, fig, ax, game, save_path='images/219-oleg-500.gif')
+    #model.load_state_dict(torch.load('saved_model_weights/219-oleg-continued/219-oleg-continued300.pth'))
+    #model.eval()
+
+    #render_from_model(model, fig, ax, game, save_path='images/219-oleg-500.gif')
 
 

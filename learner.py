@@ -1,7 +1,4 @@
-import numpy as np
-import copy
 import os
-import pickle
 from tetris3d import *
 import time
 import torch.optim as optim
@@ -11,8 +8,12 @@ from model import DenseNet
 from torch.utils.data import Dataset, DataLoader
 from termcolor import colored
 import csv
-from shapes3d import embed
 import random
+import copy
+import render
+import matplotlib.pyplot as plt
+
+# TODO: 2-21 fix 'use_target'
 
 def add_reward_dicts(dict1, dict2):
     new_dict = {}
@@ -54,6 +55,8 @@ class TetrisQLearn:
         self.schedule = False
         self.refresh_target = 1
 
+        self.renderpath = None
+
         # let user define each of the params above
         if "gamma" in kwargs:
             self.gamma = kwargs['gamma']
@@ -83,20 +86,27 @@ class TetrisQLearn:
             self.refresh_target = kwargs['refresh_target']
         if 'minibatch_size' in kwargs:
             self.minibatch_size = kwargs['minibatch_size']
+        if 'render_path' in kwargs:
+            self.renderpath = kwargs['render_path']
+        if 'use_target' in kwargs:
+            self.use_target = kwargs['use_target']
 
         # get simulation-specific variables from simulator
         self.num_actions = self.simulator.output_dimension
         self.training_reward = []
+        self.savename = savename
 
         # create text file for training log
         self.logname = os.path.join(dirname, 'training_logs', savename + '.txt')
         self.reward_logname = os.path.join(dirname, 'reward_logs', savename + '.txt')
         if not os.path.exists(os.path.join(dirname, 'saved_model_weights', savename)):
             os.mkdir(os.path.join(dirname, 'saved_model_weights', savename))
-        self.weights_folder = os.path.join(dirname, 'saved_model_weights', savename)
+        if self.renderpath and not os.path.exists(os.path.join(self.renderpath, self.savename)):
+            os.makedirs(os.path.join(self.renderpath, self.savename), exist_ok=True)
+        self.renderpath = os.path.join(self.renderpath, self.savename)
 
+        self.weights_folder = os.path.join(dirname, 'saved_model_weights', savename)
         self.reward_table = os.path.join(dirname, 'reward_logs_extended', savename + '.csv')
-        self.savename = savename
         self.weights_idx = 0
 
         self.init_log(self.logname)
@@ -104,6 +114,23 @@ class TetrisQLearn:
         self.init_log(self.reward_table)
 
         self.write_header = True
+
+    def render_model(self, epoch):
+        fig = plt.figure()
+        ax = fig.gca(projection='3d')
+
+        print('rendering...')
+        tick = time.time()
+        axis_extents = self.simulator.board_extents
+        ax.set_xlim3d(0, axis_extents[0])
+        ax.set_ylim3d(0, axis_extents[1])
+        ax.set_zlim3d(0, axis_extents[2])
+        demo_game = GameState(board_shape=axis_extents, rewards=self.simulator.rewards)
+        self.model.eval()
+        path = os.path.join(self.renderpath, self.savename + '-' + str(epoch) + '.gif')
+        render.render_from_model(self.model, fig, ax, demo_game, path, device=self.device)
+        self.model.train()
+        print('rendered %s in %.2fs' % (path, time.time() - tick))
 
     # Logging stuff
     def init_log(self, logname):
@@ -150,7 +177,10 @@ class TetrisQLearn:
             print('loading check point %s' % model_path)
             self.model.load_state_dict(torch.load(model_path))
         self.Q = self.model
+
         self.target_network = self.Q.copy()
+
+        # self.target_network = self.Q
 
         self.use_cuda = False
         self.device = torch.device('cpu')
@@ -219,12 +249,15 @@ class TetrisQLearn:
                     piece = torch.tensor(piece).to(self.device)
                     locat = torch.tensor(locat).to(self.device)
 
+                    # q is our experientially validated move score. Anchor it on our prediction vector
                     q_update = self.target_network(state, piece, locat).squeeze(0) # should be target
                     q_update[action] = q
                     processed = q_update.detach().cpu().numpy()
                     q_vals = q_vals + [processed]
                     self.processed_memory[i][j] = processed
                     total_processed += 1
+
+                    ## WE HAVE NOW PREPROCESSED W TARGET NETWORK
 
                     # clear up the vram
                     state = state.cpu().squeeze(0).numpy()
@@ -305,20 +338,13 @@ class TetrisQLearn:
 
     # choose next action
     def choose_action(self, state, piece, location):
-        invalid_actions = []
-        for i in range(len(self.simulator.action_space)): #todo paralellize
-            invalid_actions.append(not self.simulator.is_valid_action(self.simulator.action_space[i]))
-        invalid_actions = np.array(invalid_actions)
         # pick action at random
         p = np.random.rand(1)
 
         action = np.random.randint(len(self.simulator.action_space))
-        while invalid_actions[action]:
-            action = np.random.randint(len(self.simulator.action_space))
 
         # pick action based on exploiting
         qs = self.Q(state, piece, location)
-        qs = self.renormalize_vec(qs, invalid_actions)
 
         if p > self.explore_val:
             action = torch.argmax(qs)
@@ -433,6 +459,10 @@ class TetrisQLearn:
                 update = self.model.state_dict()
                 self.update_log(self.weights_folder, update, epoch=n)
 
+            if self.renderpath and n % self.save_weight_freq == self.save_weight_freq - 1:
+                self.render_model(n + 1)
+
+
             update = str(total_episode_reward) + '\n'
             self.update_log(self.reward_logname, update)
             self.log_reward(ep_rew_dict)
@@ -495,7 +525,7 @@ class TetrisQLearn:
 #
 #     async def _process(self, datum):
 #         if not datum.processed:
-#             data = datum.data
+#             data = datum.link
 #             state, piece, locat = data[0]
 #             next_state, next_piece, next_locat = data[1]
 #             action = data[2]

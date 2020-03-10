@@ -151,8 +151,8 @@ class DenseNet(nn.Module):
         x = self.pool1(x)
         x = self.dblock1(x)
         x = self.dblock2(x)
-        x = self.dblock3(x) #only enabled for 218
-        #x = self.dblock4(x)
+        # x = self.dblock3(x) # disabled for 2-20 tests
+        # x = self.dblock4(x)
         x = self.pool2(x)
         x = self.final_conv(x)
         x = x.view(-1, self.fc_indim - self.piece_net_dim)

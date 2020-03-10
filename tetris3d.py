@@ -65,17 +65,16 @@ class GameState:
         # action space cardinality
         self.output_dimension = len(self.action_space)
 
-    def reward(self, action, n=0, done=False, recalc=False):
+    def reward(self, n=0, calc=False, done=False):
 
         clear_reward = self.clear_reward * n ** 2
         piece_reward = (int(self.total_pieces > self.previous_piece_count) * self.pieces_reward)
         game_over_penalty = int(done) * (-self.game_over_penalty)
-        tick_reward =  self.game_len_reward * self.total_pieces ** 1.05
+        tick_reward =  self.game_len_reward * self.total_pieces ** 1.25
         packing_efficiency = (self.compute_packing_efficiency() * self.packing_reward)
-        variance_penalty = (-self.compute_columnar_variance() * self.variance_penalty)
-        height_penalty = -self.height() * self.height_penalty
-        empty_column_penalty = -self.empty_columns() * self.empty_column_penalty
-        overhang_penalty = -self.count_over_hangs() * self.overhang_penalty
+        variance_penalty = (self.compute_columnar_variance() * self.variance_penalty)
+        height_penalty = self.height_penalty * self.current.location[2] ** 1.25
+        empty_column_penalty = self.empty_columns() * self.empty_column_penalty
         self.previous_piece_count = self.total_pieces
 
         result_dict = {
@@ -86,12 +85,16 @@ class GameState:
             'columnar_variance': variance_penalty,
             'empty_column_penalty': empty_column_penalty,
             'height_penalty': height_penalty,
-            'overhang_penalty': overhang_penalty,
             'tick_reward': tick_reward,
         }
-        if not recalc:
+        if not calc:
             for k in result_dict.keys():
                 result_dict[k] = 0
+
+        if done:
+            for k in result_dict.keys():
+                result_dict[k] = 0
+            result_dict['game_over_penalty'] = game_over_penalty
 
         result_dict['total'] = sum(list(result_dict.values()))
 
@@ -109,7 +112,7 @@ class GameState:
         for x in range(self.board.shape[0]):
             for y in range(self.board.shape[1]):
                 numer += int(self.board[x, y, self.board.shape[2] - 1])
-        return 1 - (numer / denom)
+        return numer / denom
 
     def get_new_piece(self):
         shape = np.random.choice(list(s3d.shapelib.keys()))
@@ -121,7 +124,10 @@ class GameState:
         summed_columns = np.sum(self.board, axis=2)
         variance1 = np.var(np.array([np.var(i) for i in summed_columns]))
         variance2 = np.var(np.array([np.var(i) for i in summed_columns.T]))
-        return (variance1 + variance2) / 2
+        if variance1 + variance2 > 0:
+            return 2 / (variance1 + variance2)
+        else:
+            return 0
         # total_mass = np.sum(self.board)
         # ideal_avgmass = total_mass / (self.board_extents[0] * self.board_extents[1])
         #
@@ -131,14 +137,16 @@ class GameState:
         # return np.sum(diff) / (self.board_extents[0] * self.board_extents[1])
 
     # returns percentage utilization of rows that currently have peices
-    def compute_packing_efficiency(self):
+    def compute_packing_efficiency(self): #todo: fix this feature
         denom = 0
         sum = 0
         for z in range(self.board.shape[2]):
             denom += self.board.shape[0] * self.board.shape[1] * z
             sum += np.sum(self.board[:, :, z]) * z
         if denom != 0:
-            return sum / denom
+            height = self.height()
+            height = max(1, height)
+            return sum / denom / height
         else:
             return 0
 
@@ -280,20 +288,20 @@ class GameState:
 
         self.board_with_piece = self.add_to_board(inplace=False, color=100)
 
-        self.tick_reward = self.reward(action, n=0, done=False, recalc=False)
+        self.tick_reward = self.reward()
 
         # check the board
         if not self.is_valid_position(self.current.matrix, offset=(0, 0, 1)):
             self.board = self.add_to_board(color=1)
             removed_lines = self.remove_complete_lines()
-            self.tick_reward = self.reward(action, n=removed_lines, done=False, recalc=True)
+            self.tick_reward = self.reward(n=removed_lines, calc=True)
             self.cumscore += self.tick_reward['total']
             self.current = self.next
             self.next = self.get_new_piece()
             self.total_pieces += 1
             if not self.is_valid_position(self.current.matrix):
                 self.done = True
-                self.tick_reward = self.reward(action, removed_lines, self.done)
+                self.tick_reward = self.reward(removed_lines, calc=True, done=self.done)
 
     # returns a clean version of the game state with the same parameters
     def reset(self):
