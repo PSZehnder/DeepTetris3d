@@ -177,8 +177,11 @@ class PieceNet(nn.Module):
         self.embedding_size = embedding_size
         flattened_size = embedding_size[0] * embedding_size[1] * embedding_size[2] + 3 #location tuple
         self.fc1 = FullyConnected(flattened_size, flattened_size, 256)
-        self.relu = nn.Sequential(nn.ReLU(), nn.Dropout(0.5))
-        self.fc2 = FullyConnected(flattened_size, out_dim, 256)
+        self.relu1 = nn.Sequential(nn.ReLU(), nn.Dropout(0.5))
+        self.fc2 = FullyConnected(flattened_size, flattened_size, 256)
+        self.relu2 = nn.Sequential(nn.ReLU(), nn.Dropout(0.5))
+        self.fc3 = FullyConnected(flattened_size, out_dim, 256)
+        self.relu3 = nn.Sequential(nn.ReLU(), nn.Dropout(0.5))
 
     def embed(self, piece):
         device = piece.device
@@ -196,6 +199,9 @@ class PieceNet(nn.Module):
         location = location.view(location.shape[0], -1).float()
         x = torch.cat((x, location), 1)
         x = self.fc1(x)
-        x = self.relu(x)
+        x = self.relu1(x)
         x = self.fc2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
+        x = self.relu3(x)
         return x

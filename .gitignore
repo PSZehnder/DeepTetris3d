@@ -3,3 +3,7 @@
 *.pkl
 *.txt
 *.pyc
+*.gif
+*.json
+*.yaml
+*.yml

@@ -56,7 +56,7 @@ use_target = True
 
 # initialize memory
 episode_update = 2
-memory_length = 128
+memory_length = 8
 
 # load into instance of learner
 learner = TetrisQLearn(tetris_instance, save_name, dir,
@@ -73,7 +73,8 @@ learner = TetrisQLearn(tetris_instance, save_name, dir,
                        schedule=True,
                        refresh_target=target_refresh,
                        minibatch_size=minibatch_size,
-                       render_path='images')
+                       render_path='images',
+                       use_target=False)
 
 # initialize Q function
 modelpath = None

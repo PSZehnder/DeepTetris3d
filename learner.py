@@ -177,10 +177,10 @@ class TetrisQLearn:
             print('loading check point %s' % model_path)
             self.model.load_state_dict(torch.load(model_path))
         self.Q = self.model
-
-        self.target_network = self.Q.copy()
-
-        # self.target_network = self.Q
+        if self.use_target:
+            self.target_network = self.Q.copy()
+        else:
+            self.target_network = self.Q
 
         self.use_cuda = False
         self.device = torch.device('cpu')
@@ -313,8 +313,9 @@ class TetrisQLearn:
         return episode_loss / len(self.memory) / len(dataloader)
 
     def update_target(self):
-        self.target_network = self.Q.copy()
-        self.target_network.to(self.device)
+        if self.use_target:
+            self.target_network = self.Q.copy()
+            self.target_network.to(self.device)
         self.processed_memory = [None] * len(self.processed_memory)
 
     def update_memory(self, episode_data):
@@ -424,7 +425,10 @@ class TetrisQLearn:
             LOSS_SCALING  = 100
 
             # update the target network
-            if np.mod(n, self.refresh_target) == 0:
+            if self.use_target:
+                if np.mod(n, self.refresh_target) == 0:
+                    self.update_target()
+            else:
                 self.update_target()
 
             # train model
